@@ -4,7 +4,6 @@ import os
 import sys
 import argparse
 import random
-import re
 
 def int_to_chr(int, chrom_pos):
     '''
@@ -129,8 +128,8 @@ if __name__ == "__main__":
     parser.add_argument('-l', dest='length', type=int, help='Consensus length [required, >=10]', required=True)
     parser.add_argument('-c', dest='count', type=int, help='Consensus count [required, >=1]', required=True)
     parser.add_argument('-f', dest='freq', type=float, help='Min allele frequence [required, 0<x<=1]', required=True)
-    parser.add_argument('-a', dest='alt', action='store_true', help='''Consensus must contain at least 1 snp from vcf, but random sample may
-                              not have this snp [default: off]''')
+    parser.add_argument('-a', dest='alt', action='store_false', help='''Consensus must contain at least 1 snp from vcf (can be reference 
+                              for some samples) [default: on]''')
     parser.add_argument('-d', dest='diff', action='store_true', help='''Use if vcf-header doesn\'t contain list of 
                               chromosomes and their length, or if chromosomes order is different from fasta file [default: off]''')
     parser.add_argument('-n', dest='n', type=int, help='Split consensuses into rows with length N [default: off, >=60]')
@@ -254,12 +253,11 @@ if __name__ == "__main__":
         
         if print_flag:
             alt_seq_join = ''.join(alt_seq)[0:args.length]
-            if not re.match('^[nN]*$', alt_seq_join):
-                if args.n:
-                    alt_seq_final = '\n'.join([alt_seq_join[i:i+args.n] for i in range(0, len(alt_seq_join), args.n)])
-                else:
-                    alt_seq_final = alt_seq_join
-                output.write(''.join([*header, '\n', alt_seq_final, '\n']))
+            if args.n:
+                alt_seq_final = '\n'.join([alt_seq_join[i:i+args.n] for i in range(0, len(alt_seq_join), args.n)])
+            else:
+                alt_seq_final = alt_seq_join
+            output.write(''.join([*header, '\n', alt_seq_final, '\n']))
     fasta.close()
     output.close()
 
