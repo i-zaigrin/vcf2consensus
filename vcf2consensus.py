@@ -7,28 +7,28 @@ import random
 import re
 
 def int_to_chr(int, chrom_pos):
-    #
-    # Convert integer coordinate to chromosome and position
-    #
+    '''
+    Convert integer coordinate to chromosome and position
+    '''
     for chrom in chrom_pos:
         if int >= chrom_pos[chrom][0] and int <= chrom_pos[chrom][1]:
             break
     return chrom, int - chrom_pos[chrom][0] + 1
 
 def chr_to_int(chrom, pos, chrom_pos):
-    #
-    # Convert chromosome and position to integer coordinate
-    #
+    '''
+    Convert chromosome and position to integer coordinate
+    '''
     return chrom_pos[chrom][0] + pos - 1
 
 def load_vcf(vcf, fasta, diff):
-    #
-    # Parse vcf-file and return:
-    # vcf_data - dictionary [integer coordinate] -> [[alleles] [sample1] [sample2] ...]
-    # chrom_pos - dictionary with chromosomes coordinates in integer
-    # genome_len - genome length
-    # samples - list with samples names
-    #
+    '''
+    Parse vcf-file and return:
+    vcf_data - dictionary [integer coordinate] -> [[alleles] [sample1] [sample2] ...]
+    chrom_pos - dictionary with chromosomes coordinates in integer
+    genome_len - genome length
+    samples - list with samples names
+    '''
     vcf_file = open(vcf, 'r')
     vcf_data = {}
     
@@ -53,7 +53,7 @@ def load_vcf(vcf, fasta, diff):
                 samples = line.split()[9:]
             continue
         
-        line = line.split('\t')
+        line = line.split()
         # Skip if no alt allele
         if line[4] == '.':
             continue
@@ -80,18 +80,18 @@ def load_vcf(vcf, fasta, diff):
     return vcf_data, chrom_pos, genome_len, samples
 
 def get_vcf_snp(vcf_keys, cons_len):
-    #
-    # Create list of consensuses starts that contain alter alleles
-    #
+    '''
+    Create list of consensuses starts that contain alter alleles
+    '''
     snps = []
     for int_position in vcf_keys:
         snps.extend(range(int_position-cons_len,int_position+1))
     return list(set(snps))
 
 def load_genome(fasta):
-    #
-    # Read genome and return chrom_pos and genome_len
-    #
+    '''
+    Read genome and return chrom_pos and genome_len
+    '''
     chrom_pos = {}
     genome_len = 0
     chrom = ''
@@ -112,9 +112,9 @@ def load_genome(fasta):
     return chrom_pos, genome_len
 
 def filter_freq(perc, cutoff_freq):
-    #
-    # Returning allele's indices with requested frequency
-    #
+    '''
+    Returning allele's indices with requested frequency
+    '''
     index_pass = []
     for i, value in enumerate(perc):
         if i != 0 and value > cutoff_freq:
@@ -196,23 +196,23 @@ if __name__ == "__main__":
                 if cur_fasta_pos[0] <= snp <= cur_fasta_pos[1]:
                     break
         
-        flag = 1
         alt_pos = 0
         ref_pos = snp
         alt_seq = []
         ref_seq = []
+        print_flag = 1
         # Create consensus
         while alt_pos <= args.length:
             # Ignore consensus if chromosome ended
             if cur_fasta_pos[1] == cur_fasta_chr[1]:
-                flag = 0
+                print_flag = 0
                 break
-            # Get new snps from vcf
+            # Get next snps from vcf
             if vcf_keys[vcf_i] < ref_pos:
                 for vcf_i in range(vcf_i, len(vcf_keys)):
                     if ref_pos <= vcf_keys[vcf_i]:
                        break
-            # Get new line from fasta
+            # Get next line from fasta
             if ref_pos >= cur_fasta_pos[1] + 1:
                 line = fasta.readline().strip()
                 cur_fasta_pos = [cur_fasta_pos[1] + 1, cur_fasta_pos[1] + len(line)]
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         if ref[0] + len(ref[1]) < prev_ref[0] + len(prev_ref[1]):
             ref = prev_ref
         
-        if flag:
+        if print_flag:
             alt_seq_join = ''.join(alt_seq)[0:args.length]
             if not re.match('^[nN]*$', alt_seq_join):
                 if args.n:
