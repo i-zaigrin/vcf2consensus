@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import random
+import re
 
 def int_to_chr(int, chrom_pos):
     '''
@@ -30,13 +31,13 @@ def load_vcf(vcf, fasta, diff):
     '''
     vcf_file = open(vcf, 'r')
     vcf_data = {}
-    
+
     chrom_pos = {}
     genome_len = 0
     # Get chromosomes and genome length from genome file
     if diff:
         chrom_pos, genome_len = load_genome(fasta)
-    
+
     for line in vcf_file:
         if line.startswith('#'):
             # Get chromosomes and genome length from vcf-header
@@ -51,7 +52,7 @@ def load_vcf(vcf, fasta, diff):
             if line.startswith('#CHROM'):
                 samples = line.split()[9:]
             continue
-        
+
         line = line.split()
         # Skip if no alt allele
         if line[4] == '.':
@@ -61,7 +62,7 @@ def load_vcf(vcf, fasta, diff):
             pos_AD = line[8].split(':').index('AD')
         except:
             continue
-        
+
         int_position = chr_to_int(line[0], int(line[1]), chrom_pos)
         vcf_data[int_position] = [ [line[3], *line[4].split(',')] ]
         for sample_data in line[9:]:
@@ -69,13 +70,13 @@ def load_vcf(vcf, fasta, diff):
             # Return list with percent. If snp isn't covered, return 0 for all alleles
             try:
                 var_perc = list(map(lambda x:x/sum(var_count), var_count))
-            except ZeroDivisionError:
+            except:
                 var_perc = list(map(lambda x:0, var_count))
             vcf_data[int_position].append(var_perc)
-    
+
     vcf_data[genome_len + 1] = [['N'], [0]]
     vcf_file.close()
-    
+
     return vcf_data, chrom_pos, genome_len, samples
 
 def get_vcf_snp(vcf_keys, cons_len):
@@ -95,7 +96,7 @@ def load_genome(fasta):
     genome_len = 0
     chrom = ''
     fasta_file = open(fasta, 'r')
-    
+
     for line in fasta_file:
         if line.startswith('>'):
             if chrom != '':
@@ -104,10 +105,10 @@ def load_genome(fasta):
             chrom_pos[chrom] = [genome_len + 1, 0]
             continue
         genome_len += len(line.strip())
-    
+
     chrom_pos[chrom][1] = genome_len
     fasta_file.close()
-    
+
     return chrom_pos, genome_len
 
 def filter_freq(perc, cutoff_freq):
@@ -128,14 +129,14 @@ if __name__ == "__main__":
     parser.add_argument('-l', dest='length', type=int, help='Consensus length [required, >=10]', required=True)
     parser.add_argument('-c', dest='count', type=int, help='Consensus count [required, >=1]', required=True)
     parser.add_argument('-f', dest='freq', type=float, help='Min allele frequence [required, 0<x<=1]', required=True)
-    parser.add_argument('-a', dest='alt', action='store_false', help='''Consensus must contain at least 1 snp from vcf (can be reference 
+    parser.add_argument('-a', dest='alt', action='store_false', help='''Consensus must contain at least 1 snp from vcf (can be reference
                               for some samples) [default: on]''')
-    parser.add_argument('-d', dest='diff', action='store_true', help='''Use if vcf-header doesn\'t contain list of 
+    parser.add_argument('-d', dest='diff', action='store_true', help='''Use if vcf-header doesn\'t contain list of
                               chromosomes and their length, or if chromosomes order is different from fasta file [default: off]''')
     parser.add_argument('-n', dest='n', type=int, help='Split consensuses into rows with length N [default: off, >=60]')
     parser.add_argument('-o', dest='output', type=str, help='Output name [default: output.fa]', default='output.fa')
     args = parser.parse_args()
-    
+
     if not os.path.exists(args.vcf):
         sys.exit('VCF file not found.\nExit.')
     if not os.path.exists(args.genome):
@@ -148,41 +149,48 @@ if __name__ == "__main__":
         sys.exit('Frequency must be between 0 and 1.\nExit.')
     if args.n and args.n < 60:
         sys.exit('Rows length must be at least 60.\nExit.')
-    
+
     # Read vcf
     vcf_data, chrom_pos, genome_len, samples = load_vcf(args.vcf, args.genome, args.diff)
     vcf_keys = sorted(vcf_data.keys())
     chrom_keys = chrom_pos.keys()
-    
-    # Create snps list
+
+    # Create snps for only-alt
     if args.alt:
-        snps_list = get_vcf_snp(vcf_keys, args.length)
-        snps = sorted(random.sample(snps_list, min(args.count, len(snps_list))))
+        snps_list = sorted(get_vcf_snp(vcf_keys, args.length))
+        snp_count = len(snps_list)
     else:
-        snps = sorted(random.sample(range(1, genome_len + 1), min(args.count, genome_len)))
-    
+        snp_count = genome_len
+    cons_left = min(args.count, snp_count)
+
     fasta = open(args.genome, 'r')
     output = open(args.output, 'w')
-    ref = [0, '']
-    prev_snp = 0
+    prev_ref = [0, '']
     cur_vcf_pos = 0
     cur_fasta_pos = [0, 0]
-    
-    for snp in snps:
-        prev_ref = ref
+
+    snp_i = 1
+    while snp_i < snp_count-1 and cons_left >= 1:
+        # Next snp on genome or vcf-snp list
+        snp_i += round(random.gammavariate(1.0, (snp_count - snp_i)/cons_left) + 0.5)
+        if args.alt:
+            snp = snps_list[min(snp_i,snp_count-1)]
+        else:
+            snp = min(snp_i,snp_count-1)
+
         ref = [snp, '']
         chrom, pos = int_to_chr(snp, chrom_pos)
         # Choose random sample for consensus
         sample_id = random.sample(range(0, len(samples)), 1)[0]
         sample_name = samples[sample_id]
         header = ['>consensus_', chrom, '_', str(pos), ' sample:', sample_name]
-        
+
         # Search first snp after consensuses start position
         for vcf_i in range(cur_vcf_pos, len(vcf_keys)):
             if snp <= vcf_keys[vcf_i]:
                 break
         cur_vcf_pos = vcf_i
-        
+
         # Search fasta-line with consensuses start position
         if snp > cur_fasta_pos[1]:
             for line in fasta:
@@ -194,17 +202,15 @@ if __name__ == "__main__":
                 cur_fasta_pos = [cur_fasta_pos[1]+1, cur_fasta_pos[1]+len(line)]
                 if cur_fasta_pos[0] <= snp <= cur_fasta_pos[1]:
                     break
-        
+
         alt_pos = 0
         ref_pos = snp
         alt_seq = []
         ref_seq = []
-        print_flag = 1
         # Create consensus
         while alt_pos <= args.length:
             # Ignore consensus if chromosome ended
             if cur_fasta_pos[1] == cur_fasta_chr[1]:
-                print_flag = 0
                 break
             # Get next snps from vcf
             if vcf_keys[vcf_i] < ref_pos:
@@ -215,7 +221,7 @@ if __name__ == "__main__":
             if ref_pos >= cur_fasta_pos[1] + 1:
                 line = fasta.readline().strip()
                 cur_fasta_pos = [cur_fasta_pos[1] + 1, cur_fasta_pos[1] + len(line)]
-            
+
             # If start was before and genomes line doesn't contain it, get sequence from previous snp reference
             if ref_pos < cur_fasta_pos[0]:
                 seq = prev_ref[1]
@@ -225,7 +231,7 @@ if __name__ == "__main__":
                 seq = line
                 start = cur_fasta_pos[0]
                 end = cur_fasta_pos[1] + 1
-            
+
             # Alternative allele or reference
             if vcf_keys[vcf_i] == ref_pos:
                 ref_add = vcf_data[vcf_keys[vcf_i]][0][0]
@@ -240,24 +246,25 @@ if __name__ == "__main__":
             else:
                 ref_add = seq[ref_pos-start:min(end,vcf_keys[vcf_i])-start]
                 alt_add = ref_add
-            
+
             ref_seq.append(ref_add)
             alt_seq.append(alt_add)
             ref_pos += len(ref_seq[-1])
             alt_pos += len(alt_seq[-1])
-        
-        # If current reference (consensus with insertions) ended before the previous, then keep the previous
-        ref[1] = ''.join(ref_seq)
-        if ref[0] + len(ref[1]) < prev_ref[0] + len(prev_ref[1]):
-            ref = prev_ref
-        
-        if print_flag:
+        else:
             alt_seq_join = ''.join(alt_seq)[0:args.length]
-            if args.n:
-                alt_seq_final = '\n'.join([alt_seq_join[i:i+args.n] for i in range(0, len(alt_seq_join), args.n)])
-            else:
-                alt_seq_final = alt_seq_join
-            output.write(''.join([*header, '\n', alt_seq_final, '\n']))
+            if not re.match('^[nN]*$', alt_seq_join):
+                if args.n:
+                    alt_seq_final = '\n'.join([alt_seq_join[i:i+args.n] for i in range(0, len(alt_seq_join), args.n)])
+                else:
+                    alt_seq_final = alt_seq_join
+                output.write(''.join([*header, '\n', alt_seq_final, '\n']))
+                cons_left -= 1
+
+        # If current reference (consensus with insertions/deletion) ended before the previous, then keep the previous
+        ref[1] = ''.join(ref_seq)
+        if ref[0] + len(ref[1]) > prev_ref[0] + len(prev_ref[1]):
+            prev_ref = ref
+
     fasta.close()
     output.close()
-
